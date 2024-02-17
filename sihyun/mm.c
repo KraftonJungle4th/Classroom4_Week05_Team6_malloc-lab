@@ -44,12 +44,75 @@ team_t team = {
 
 #define SIZE_T_SIZE (ALIGN(sizeof(size_t)))
 
+#define WSIZE 4                 // 워드와 헤더, 푸터 크기(바이트 단위)
+#define DSIZE 8                 // 더블 워드 크기 (바이트 단위)
+#define CHUNKSIZE (1<<12)       // 12바이트 크기로 힙 확장
+
+#define MAX(x, y) ((x) > (y) ? (x) : (y))
+
+// 사이즈와 할당된 비트를 워드로 패킹
+#define PACK(size, alloc) ((size) | (alloc))
+
+// 주소 p에 워드단위로 읽고 쓰기
+#define GET(p) (*(unsigned int *)(p))
+#define PUT(p, val) (*(unsigned int *)(p) = (val))
+
+// 주소 p로부터 사이즈와 할당된 필드를 읽어오기
+#define GET_SIZE(p) (GET(p) & ~0x7)
+#define GET_ALLOC(p) (GET(p) & ~0x1)
+
+// 주어진 bp(블록포인터)를 통해 그 블록의 헤더와 푸터의 주소를 계산
+#define HDRP(bp) ((char*)(bp) - WSIZE)
+#define FTRP(bp) ((char*)(bp) + GET_SIZE(HDRP(bp)) - DSIZE)
+
+// 주어진 bp(블록포인터)를 통해 이전과 다음 블록의 주소를 계산
+#define NEXT_BLKP(bp) ((char *)(bp) + GET_SIZE(((char *)(bp) - WSIZE)))
+#define PREV_BLKP(bp) ((char *)(bp) - GET_SIZE(((char *)(bp) - DSIZE)))
+
 /* 
  * mm_init - initialize the malloc package.
  */
 int mm_init(void)
 {
+    // 빈 힙을 만드세요
+    if ((heap_listp = memsbrk(4*WSIZE)) == (void *) -1)
+        return -1;
+    PUT(heap_listp, 0);
+    PUT(heap_listp + (1*WSIZE), PACK(DSIZE, 1));
+    PUT(heap_listp + (2*WSIZE), PACK(DSIZE, 1));
+    PUT(heap_listp + (3*WSIZE), PACK(0, 1));
+    heap_listp += (2*WSIZE);
+
+    // 빈 힙을 CHUNKSIZE 바이트(12 바이트)로 확장하기
+    if (extend_heap(CHUNKSIZE/WSIZE) == NULL)
+        return -1;
     return 0;
+}
+
+static void *extend_heap(size_t words)
+{ 
+    char *bp;
+    size_t size;
+
+    // 정렬을 유지하기 위해 (word * 짝수) 개수 만큼 할당
+    size = (words % 2) ? (words+1) * WSIZE : words * WSIZE;
+    if ((long)(bp = mem_sbrk(size)) == -1)
+        return NULL;
+    
+    // 가용 브록의 헤더와 풋터, 에필로그 블록을 초기화
+    PUT(HDRP(bp), PACK(size, 0));            // 가용 블록의 헤더
+    PUT(FTRP(bp), PACK(size, 0));            // 가용 블록의 풋터
+    PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1));    // 새로운 에필로그 헤더
+
+    // 만약 이전 블록이 가용 블록이었으면 통합
+    return coalesce(bp);
+}
+
+void mm_free(void *bp)
+{
+    size_t size = GET_SIZE(HDRP(bp));
+
+    PUT(HDRP(bp));
 }
 
 /* 
