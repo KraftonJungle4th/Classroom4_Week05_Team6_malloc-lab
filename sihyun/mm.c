@@ -1,14 +1,3 @@
-/*
- * mm-naive.c - The fastest, least memory-efficient malloc package.
- * 
- * In this naive approach, a block is allocated by simply incrementing
- * the brk pointer.  A block is pure payload. There are no headers or
- * footers.  Blocks are never coalesced or reused. Realloc is
- * implemented directly using mm_malloc and mm_free.
- *
- * NOTE TO STUDENTS: Replace this header comment with your own header
- * comment that gives a high level description of your solution.
- */
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -41,43 +30,34 @@ team_t team = {
 /* rounds up to the nearest multiple of ALIGNMENT */
 #define ALIGN(size) (((size) + (ALIGNMENT-1)) & ~0x7)
 
-
-#define SIZE_T_SIZE (ALIGN(sizeof(size_t)))
-
+// 상수 정의
 #define WSIZE 4                 // 워드와 헤더, 푸터 크기(바이트 단위)
 #define DSIZE 8                 // 더블 워드 크기 (바이트 단위)
 #define CHUNKSIZE (1<<12)       // 12바이트 크기로 힙 확장
 
+// 힙에 사용될 매크로
 #define MAX(x, y) (x > y ? x : y)
-
-// 사이즈와 할당된 비트를 워드로 패킹
-#define PACK(size, alloc) (size | alloc)
-
-// 주소 p에 워드단위로 읽고 쓰기
-#define GET(p) (*(unsigned int *)(p))
-#define PUT(p, val) (*(unsigned int *)(p) = val)
-
-// 주소 p로부터 사이즈와 할당된 필드를 읽어오기
-#define GET_SIZE(p) (GET(p) & ~0x7)
-#define GET_ALLOC(p) (GET(p) & 0x1)
-
-// 주어진 bp(블록포인터)를 통해 그 블록의 헤더와 푸터의 주소를 계산
-#define HDRP(bp) ((char*)(bp) - WSIZE)
-#define FTRP(bp) ((char*)(bp) + GET_SIZE(HDRP(bp)) - DSIZE)
-
-// 주어진 bp(블록포인터)를 통해 이전과 다음 블록의 주소를 계산
-#define NEXT_BLKP(bp) ((char *)(bp) + GET_SIZE(((char *)(bp) - WSIZE)))
-#define PREV_BLKP(bp) ((char *)(bp) - GET_SIZE(((char *)(bp) - DSIZE)))
+#define PACK(size, alloc) (size | alloc)          // 사이즈와 할당된 비트를 워드로 패킹
+#define GET(p) (*(unsigned int *)(p))             // 주소 p에 워드단위로 읽어오기
+#define PUT(p, val) (*(unsigned int *)(p) = val)  // 주소 p에 워드단위로 쓰기
+#define GET_SIZE(p) (GET(p) & ~0x7)               // 주소 p로부터 사이즈 읽어오기
+#define GET_ALLOC(p) (GET(p) & 0x1)               // 주소 p로부터 할당여부 읽어오기
+#define HDRP(bp) ((char*)(bp) - WSIZE)            // 주어진 bp(블록포인터)를 통해 그 블록의 헤더 주소를 계산
+#define FTRP(bp) ((char*)(bp) + GET_SIZE(HDRP(bp)) - DSIZE)  // 주어진 bp(블록포인터)를 통해 그 블록의 푸터 주소를 계산
+#define NEXT_BLKP(bp) ((char *)(bp) + GET_SIZE(((char *)(bp) - WSIZE)))  // 주어진 bp(블록포인터)를 통해 이전과 다음 블록의 주소를 계산
+#define PREV_BLKP(bp) ((char *)(bp) - GET_SIZE(((char *)(bp) - DSIZE)))  // 주어진 bp(블록포인터)를 통해 이전과 다음 블록의 주소를 계산
 
 static void *extend_heap(size_t words);
 static void *coalesce(void *bp);
 static void *find_fit(size_t asize);
 static void place(void *bp, size_t asize);
 
+char *heap_listp;
+
 int mm_init(void)
 {
     // 빈 힙을 만들기
-    char *heap_listp;
+    
     if ((heap_listp = mem_sbrk(4*WSIZE)) == (void *) -1)
         return -1;
     PUT(heap_listp, 0);
@@ -132,6 +112,35 @@ void mm_free(void *bp)
     coalesce(bp);
 }
 
+void *mm_realloc(void *ptr, size_t size)
+{
+    /* 예외 처리 */
+    if (ptr == NULL) // 포인터가 NULL인 경우 할당만 수행
+        return mm_malloc(size);
+
+    if (size <= 0) // size가 0인 경우 메모리 반환만 수행
+    {
+        mm_free(ptr);
+        return 0;
+    }
+
+    /* 새 블록에 할당 */
+    void *newptr = mm_malloc(size); // 새로 할당한 블록의 포인터
+    if (newptr == NULL)
+        return NULL; // 할당 실패
+
+    /* 데이터 복사 */
+    size_t copySize = GET_SIZE(HDRP(ptr)) - DSIZE; // payload만큼 복사
+    if (size < copySize)                           // 기존 사이즈가 새 크기보다 더 크면
+        copySize = size;                           // size로 크기 변경 (기존 메모리 블록보다 작은 크기에 할당하면, 일부 데이터만 복사)
+
+    memcpy(newptr, ptr, copySize); // 새 블록으로 데이터 복사
+
+    /* 기존 블록 반환 */
+    mm_free(ptr);
+
+    return newptr;
+}
 
 static void *extend_heap(size_t words)
 { 
@@ -143,7 +152,7 @@ static void *extend_heap(size_t words)
     if ((long)(bp = mem_sbrk(size)) == -1)
         return NULL;
     
-    // 가용 브록의 헤더와 풋터, 에필로그 블록을 초기화
+    // 가용 블록의 헤더와 풋터, 에필로그 블록을 초기화
     PUT(HDRP(bp), PACK(size, 0));            // 가용 블록의 헤더
     PUT(FTRP(bp), PACK(size, 0));            // 가용 블록의 풋터
     PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1));    // 새로운 에필로그 헤더
@@ -185,37 +194,17 @@ static void *coalesce(void *bp)
     return bp;
 }
 
-
-/*
- * mm_realloc - Implemented simply in terms of mm_malloc and mm_free
- */
-void *mm_realloc(void *ptr, size_t size)
-{
-    void *oldptr = ptr;
-    void *newptr;
-    size_t copySize;
-    
-    newptr = mm_malloc(size);
-    if (newptr == NULL)
-      return NULL;
-    copySize = *(size_t *)((char *)oldptr - SIZE_T_SIZE);
-    if (size < copySize)
-      copySize = size;
-    memcpy(newptr, oldptr, copySize);
-    mm_free(oldptr);
-    return newptr;
-}
-
 static void *find_fit(size_t asize)
 {
-    void *bp = mem_heap_lo() + 2 * WSIZE; // 첫번째 블록(주소: 힙의 첫 부분 + 8bytes)부터 탐색 시작
-    while (GET_SIZE(HDRP(bp)) > 0)
+    // first-fit search
+    void *bp;
+
+    for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp))
     {
-        if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp)))) // 가용 상태이고, 사이즈가 적합하면
-            return bp;                                             // 해당 블록 포인터 리턴
-        bp = NEXT_BLKP(bp);                                        // 조건에 맞지 않으면 다음 블록으로 이동해서 탐색을 이어감
+        if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp))))
+            return bp;
     }
-    return NULL;
+    return NULL;     // no fit
 }
 
 static void place(void *bp, size_t asize)
@@ -226,9 +215,10 @@ static void place(void *bp, size_t asize)
     {
         PUT(HDRP(bp), PACK(asize, 1)); // 현재 블록에는 필요한 만큼만 할당
         PUT(FTRP(bp), PACK(asize, 1));
+        bp = NEXT_BLKP(bp);
 
-        PUT(HDRP(NEXT_BLKP(bp)), PACK((csize - asize), 0)); // 남은 크기를 다음 블록에 할당(가용 블록)
-        PUT(FTRP(NEXT_BLKP(bp)), PACK((csize - asize), 0));
+        PUT(HDRP(bp), PACK((csize - asize), 0)); // 남은 크기를 다음 블록에 할당(가용 블록)
+        PUT(FTRP(bp), PACK((csize - asize), 0));
     }
     else
     {
