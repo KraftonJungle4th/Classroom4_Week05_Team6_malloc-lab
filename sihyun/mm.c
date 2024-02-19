@@ -17,11 +17,12 @@ team_t team = {
     /* First member's full name */
     "Sihyun Lee",
     /* First member's email address */
-    "moorow0729@hufs.ac.kr",
+    " moorow0729@hufs.ac.kr",
     /* Second member's full name (leave blank if none) */
-    "",
+    "SeongJun Moon, Habin Choi",
     /* Second member's email address (leave blank if none) */
-    ""
+    " ",
+    /* Third member's full name (leave blank if none) */
 };
 
 /* single word (4) or double word (8) alignment */
@@ -52,14 +53,13 @@ static void *coalesce(void *bp);
 static void *find_fit(size_t asize);
 static void place(void *bp, size_t asize);
 
-char *heap_listp;
-char *last_bp = NULL;
 
+char *last_bp;
+char *heap_listp;
 
 int mm_init(void)
 {
     // 빈 힙을 만들기
-    
     if ((heap_listp = mem_sbrk(4*WSIZE)) == (void *) -1)
         return -1;
     PUT(heap_listp, 0);
@@ -193,6 +193,7 @@ static void *coalesce(void *bp)
         bp = PREV_BLKP(bp);
     }
 
+    last_bp = bp;
     return bp;
 }
 
@@ -214,18 +215,18 @@ static void *find_fit(size_t asize)
     // next-fit search
     void *bp;
 
-    if (GET_ALLOC(HDRP((PREV_BLKP(bp)))) == 1)
-    {
-        bp = (PREV_BLKP(bp));
+    // last_bp가 설정되지 않았거나 유효하지 않은 경우, 힙의 시작부터 검색 시작
+    if (last_bp == NULL || GET_SIZE(HDRP(last_bp)) == 0) {
+        last_bp = heap_listp;
     }
-    else {
-        bp = heap_listp;
-    }
-    for (bp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp))
+    for (bp=last_bp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp))
     {
-        if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp))))
+        if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp)))) {
+            last_bp = bp;
             return bp;
+        }
     }
+    
     return NULL;     // no fit
 }
 
@@ -237,14 +238,17 @@ static void place(void *bp, size_t asize)
     {
         PUT(HDRP(bp), PACK(asize, 1)); // 현재 블록에는 필요한 만큼만 할당
         PUT(FTRP(bp), PACK(asize, 1));
+        last_bp = bp;
         bp = NEXT_BLKP(bp);
 
         PUT(HDRP(bp), PACK((csize - asize), 0)); // 남은 크기를 다음 블록에 할당(가용 블록)
         PUT(FTRP(bp), PACK((csize - asize), 0));
+        
     }
     else
     {
         PUT(HDRP(bp), PACK(csize, 1)); // 해당 블록 전부 사용
         PUT(FTRP(bp), PACK(csize, 1));
+        last_bp = bp;
     }
 }
