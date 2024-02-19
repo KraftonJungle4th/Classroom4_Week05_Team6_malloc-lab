@@ -53,6 +53,8 @@ static void *find_fit(size_t asize);
 static void place(void *bp, size_t asize);
 
 char *heap_listp;
+char *last_bp = NULL;
+
 
 int mm_init(void)
 {
@@ -194,12 +196,32 @@ static void *coalesce(void *bp)
     return bp;
 }
 
+// static void *find_fit(size_t asize)
+// {
+//     // first-fit search
+//     void *bp;
+
+//     for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp))
+//     {
+//         if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp))))
+//             return bp;
+//     }
+//     return NULL;     // no fit
+// }
+
 static void *find_fit(size_t asize)
 {
-    // first-fit search
+    // next-fit search
     void *bp;
 
-    for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp))
+    if (GET_ALLOC(HDRP((PREV_BLKP(bp)))) == 1)
+    {
+        bp = (PREV_BLKP(bp));
+    }
+    else {
+        bp = heap_listp;
+    }
+    for (bp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp))
     {
         if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp))))
             return bp;
