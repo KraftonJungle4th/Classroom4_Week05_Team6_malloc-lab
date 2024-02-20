@@ -37,6 +37,11 @@ team_t team = {
 #define CHUNKSIZE (1<<12)       // 12바이트 크기로 힙 확장
 #define SIZE_T_SIZE (ALIGN(sizeof(size_t)))
 
+// 메모리 할당 정책
+// #define FIRST_FIT
+#define NEXT_FIT
+// #define BEST_FIT
+
 // 힙에 사용될 매크로
 #define MAX(x, y) (x > y ? x : y)
 #define PACK(size, alloc) (size | alloc)          // 사이즈와 할당된 비트를 워드로 패킹
@@ -51,8 +56,7 @@ team_t team = {
 
 static void *extend_heap(size_t words);
 static void *coalesce(void *bp);
-static void *first_fit(size_t asize);
-static void *next_fit(size_t asize);
+static void *find_fit(size_t asize);
 static void place(void *bp, size_t asize);
 
 
@@ -95,7 +99,7 @@ void *mm_malloc(size_t size)
         asize = DSIZE * ((size + (DSIZE) + (DSIZE-1)) / DSIZE);
 
     // free list에서 크기가 맞는 가용 블록 검색
-    if ((bp = next_fit(asize)) != NULL) {
+    if ((bp = find_fit(asize)) != NULL) {
         place(bp, asize);
         last_bp = bp;
         return bp;
@@ -151,50 +155,6 @@ void *mm_realloc(void *ptr, size_t size)
     }
 }
 
-// void *mm_realloc(void *ptr, size_t size)
-// {
-//         /* 예외 처리 */
-//     if (ptr == NULL) // 포인터가 NULL인 경우 할당만 수행
-//         return mm_malloc(size);
-
-//     if (size <= 0) // size가 0인 경우 메모리 반환만 수행
-//     {
-//         mm_free(ptr);
-//         return 0;
-//     }
-
-//         /* 새 블록에 할당 */
-//     void *newptr = mm_malloc(size); // 새로 할당한 블록의 포인터
-//     if (newptr == NULL)
-//         return NULL; // 할당 실패
-
-//         /* 데이터 복사 */
-//     size_t copySize = GET_SIZE(HDRP(ptr)) - DSIZE; // payload만큼 복사
-//     if (size < copySize)                           // 기존 사이즈가 새 크기보다 더 크면
-//         copySize = size;                           // size로 크기 변경 (기존 메모리 블록보다 작은 크기에 할당하면, 일부 데이터만 복사)
-
-//     memcpy(newptr, ptr, copySize); // 새 블록으로 데이터 복사
-
-//         /* 기존 블록 반환 */
-//     mm_free(ptr);
-
-//     return newptr;
-// }
-
-// void *mm_realloc(void *ptr, size_t size)
-// {
-//     void *old_ptr = ptr;
-//     void *new_ptr;
-
-//     size_t originsize = GET_SIZE(HDRP(oldptr));
-//     size_t newsize = size+DSIZE;
-
-//     if (newsize <= originsize) {
-//         return oldptr;
-//     } 
-
-// }
-
 static void *extend_heap(size_t words)
 { 
     char *bp;
@@ -248,7 +208,9 @@ static void *coalesce(void *bp)
     return bp;
 }
 
-static void *first_fit(size_t asize)
+// first_fit 구현
+#if defined(FIRST_FIT)
+static void *find_fit(size_t asize)
 {
     // first-fit search
     void *bp;
@@ -261,7 +223,9 @@ static void *first_fit(size_t asize)
     return NULL;     // no fit
 }
 
-static void *next_fit(size_t asize)
+// next-fit 구현
+#elif defined(NEXT_FIT)
+static void *find_fit(size_t asize)
 {
     // next-fit search
     char *bp;
@@ -284,6 +248,7 @@ static void *next_fit(size_t asize)
     
     return NULL;     // no fit
 }
+#endif
 
 static void place(void *bp, size_t asize)
 {
