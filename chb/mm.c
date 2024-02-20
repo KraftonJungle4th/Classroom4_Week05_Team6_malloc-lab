@@ -252,7 +252,6 @@ static void *find_fit(size_t asize)
             return bp;
     }
     return NULL;
-
 }
 
 /*
