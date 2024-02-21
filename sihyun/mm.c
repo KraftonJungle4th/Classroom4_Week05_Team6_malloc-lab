@@ -38,9 +38,9 @@ team_t team = {
 #define SIZE_T_SIZE (ALIGN(sizeof(size_t)))
 
 // 메모리 할당 정책
-// #define FIRST_FIT
+#define FIRST_FIT
 // #define NEXT_FIT
-#define BEST_FIT
+//#define BEST_FIT
 
 // 힙에 사용될 매크로
 #define MAX(x, y) (x > y ? x : y)
@@ -191,14 +191,14 @@ void *mm_realloc(void *ptr, size_t size)
         return oldptr;
     }
     else {
-        // realloc 최적화 중
-        // addSize = originsize + GET_SIZE(FTRP(PREV_BLKP(oldptr)));  // 이전 블록의 크기 + 현재 bp가 보고 있는 블록의 크기
-        // if (!GET_ALLOC(FTRP(PREV_BLKP(oldptr))) && (newsize <= addSize))
-        // {
-        //     PUT(HDRP(PREV_BLKP(oldptr)), PACK(addSize, 1));
-        //     PUT(FTRP(oldptr), PACK(addSize, 1));
-        //     return PREV_BLKP(oldptr);
-        // }
+        //realloc 최적화 중
+        addSize = originsize + GET_SIZE(FTRP(PREV_BLKP(oldptr)));  // 이전 블록의 크기 + 현재 bp가 보고 있는 블록의 크기
+        if (!GET_ALLOC(FTRP(PREV_BLKP(oldptr))) && (newsize <= addSize))
+        {
+            PUT(HDRP(PREV_BLKP(oldptr)), PACK(addSize, 1));
+            PUT(FTRP(PREV_BLKP(oldptr)), PACK(addSize, 1));
+            return PREV_BLKP(oldptr);
+        }
         addSize = originsize + GET_SIZE(HDRP(NEXT_BLKP(oldptr)));
         if (!GET_ALLOC(HDRP(NEXT_BLKP(oldptr))) && (newsize <= addSize))
         {
