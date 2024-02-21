@@ -269,7 +269,7 @@ static void *find_fit(size_t asize)
     {
         if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp))))
         {
-            if (GET_SIZE(HDRP(bp)) < GET_SIZE(HDRP(best_bp))) {
+            if ( best_bp == NULL || GET_SIZE(HDRP(bp)) < GET_SIZE(HDRP(best_bp))) {
                 best_bp = bp;
             }
         }
