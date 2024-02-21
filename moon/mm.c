@@ -73,6 +73,7 @@ team_t team = {
 // 메모리 할당에 사용할 함수들 선언
 static void *heap_listp;
 static char *last_bp;
+static char *check_bp;
 
 static void *extend_heap(size_t words);
 static void *coalesce(void *bp);
@@ -243,15 +244,23 @@ static void *find_fit(size_t asize)
     }
     return NULL;
 #elif defined(best_fit)
-    void *bp = mem_heap_lo() + (2 * WSIZE); // 사용가능한 블록주소 계산
-    while(GET_SIZE(HDRP(bp)) > 0) // 힙의 모든 블록 순회
+    void *bp = mem_heap_lo() + (2 * WSIZE);// 사용가능한 블록주소 계산
+    void *check_size = NULL; // 효율이 좋은 블록주소를 저장
+
+    if(asize == NULL) return NULL; // 요청한게 없으면 NULL 리턴
+    while(GET_SIZE(HDRP(bp)) > 0) // 에필로그블록까지 돌면서
     {
-        if(!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp)))) // 헤더블록이 할당되지 않았고 그 크기가 요청된 크기보다 크면
-            return bp; // 블록의 주소 반환
+        // 가용블록이고 요청크기보다 크거나 같을 때
+        if(!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp))))
+        {
+            // 첫 블록이거나 현재 크기와 저장해논 크기를 비교해 현재 크기가 더 작으면
+            if(!check_size || GET_SIZE(HDRP(bp)) < GET_SIZE(HDRP(check_size)))
+                check_size = bp; // 변수에 현재 블록 담기
+        }
         
-        bp = NEXT_BLKP(bp); // 다음 블록으로 이동
+        bp = NEXT_BLKP(bp); // 다음 블록 이동
     }
-    return NULL; // 전부 검사했을 때 조건을 충족하지 않으면 NULL 반환
+    return check_size; // 전부 돌고 효율이 제일 좋은 블록 주소값 반환
 #endif
 }
 
@@ -299,8 +308,6 @@ void *mm_realloc(void *ptr, size_t size)
         copySize = size;
 
     memcpy(newptr, ptr, copySize); // ptr이 가리키는 메모리에서 newptr이 가리키는 메모리로 복사한크기만큼의 데이터를 복사한다.
-
     mm_free(ptr);  // 기존에 할당되었던 메모리블록을 해제
-
     return newptr; // 새로 할당받은 메모리 블록의 주소 반환
 }
