@@ -61,7 +61,6 @@ static void place(void *bp, size_t asize);
 
 
 char *last_bp;
-char *best_bp;
 char *heap_listp;
 
 int mm_init(void)
@@ -77,7 +76,7 @@ int mm_init(void)
     heap_listp += (2*WSIZE);
     last_bp = heap_listp;
 
-    // 빈 힙을 CHUNKSIZE 바이트(12 바이트)로 확장하기
+    // 빈 힙을 CHUNKSIZE 바이트(4096 바이트)로 확장하기
     if (extend_heap(CHUNKSIZE/WSIZE) == NULL)
         return -1;
     return 0;
@@ -261,7 +260,22 @@ static void *find_fit(size_t asize)
 }
 
 #elif defined(BEST_FIT)
-
+static void *find_fit(size_t asize)
+{
+    // best-fit search
+    void *bp;
+    void *best_bp = NULL;
+    for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp))
+    {
+        if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp))))
+        {
+            if (GET_SIZE(HDRP(bp)) < GET_SIZE(HDRP(best_bp))) {
+                best_bp = bp;
+            }
+        }
+    }
+    return best_bp;     // no fit
+}
 
 #endif
 
