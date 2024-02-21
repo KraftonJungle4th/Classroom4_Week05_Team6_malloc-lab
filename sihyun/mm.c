@@ -39,8 +39,8 @@ team_t team = {
 
 // 메모리 할당 정책
 // #define FIRST_FIT
-#define NEXT_FIT
-// #define BEST_FIT
+// #define NEXT_FIT
+#define BEST_FIT
 
 // 힙에 사용될 매크로
 #define MAX(x, y) (x > y ? x : y)
@@ -61,6 +61,7 @@ static void place(void *bp, size_t asize);
 
 
 char *last_bp;
+char *best_bp;
 char *heap_listp;
 
 int mm_init(void)
@@ -113,46 +114,6 @@ void *mm_malloc(size_t size)
     last_bp = bp;
     return bp;
 
-}
-
-void mm_free(void *bp)
-{
-    size_t size = GET_SIZE(HDRP(bp));
-
-    PUT(HDRP(bp), PACK(size, 0));
-    PUT(FTRP(bp), PACK(size, 0));
-    coalesce(bp);
-}
-
-void *mm_realloc(void *ptr, size_t size)
-{
-    void *oldptr = ptr;
-    void *newptr;
-
-    size_t originsize = GET_SIZE(HDRP(oldptr));
-    size_t newsize = size + DSIZE;
-
-    if (newsize <= originsize) {
-        return oldptr;
-    }
-    else {
-        size_t addSize = originsize + GET_SIZE(HDRP(NEXT_BLKP(oldptr)));
-        if (!GET_ALLOC(HDRP(NEXT_BLKP(oldptr))) && (newsize <= addSize))
-        {
-            PUT(HDRP(oldptr), PACK(addSize, 1));
-            PUT(FTRP(oldptr), PACK(addSize, 1));
-            return oldptr;
-        }
-        else
-        {
-            newptr = mm_malloc(newsize);
-            if (newptr == NULL)
-                return NULL;
-            memmove(newptr, oldptr, newsize);
-            mm_free(oldptr);
-            return newptr;
-        }
-    }
 }
 
 static void *extend_heap(size_t words)
@@ -208,6 +169,56 @@ static void *coalesce(void *bp)
     return bp;
 }
 
+void mm_free(void *bp)
+{
+    size_t size = GET_SIZE(HDRP(bp));
+
+    PUT(HDRP(bp), PACK(size, 0));
+    PUT(FTRP(bp), PACK(size, 0));
+    coalesce(bp);
+}
+
+void *mm_realloc(void *ptr, size_t size)
+{
+    void *oldptr = ptr;
+    void *newptr;
+
+    size_t originsize = GET_SIZE(HDRP(oldptr));    // 현재 bp가 보고 있는 블록의 크기
+    size_t newsize = size + DSIZE;                 // realloc 하고싶은 블록의 최소 크기
+    size_t addSize;
+
+    if (newsize <= originsize) {
+        return oldptr;
+    }
+    else {
+        // realloc 최적화 중
+        // addSize = originsize + GET_SIZE(FTRP(PREV_BLKP(oldptr)));  // 이전 블록의 크기 + 현재 bp가 보고 있는 블록의 크기
+        // if (!GET_ALLOC(FTRP(PREV_BLKP(oldptr))) && (newsize <= addSize))
+        // {
+        //     PUT(HDRP(PREV_BLKP(oldptr)), PACK(addSize, 1));
+        //     PUT(FTRP(oldptr), PACK(addSize, 1));
+        //     return PREV_BLKP(oldptr);
+        // }
+        addSize = originsize + GET_SIZE(HDRP(NEXT_BLKP(oldptr)));
+        if (!GET_ALLOC(HDRP(NEXT_BLKP(oldptr))) && (newsize <= addSize))
+        {
+            PUT(HDRP(oldptr), PACK(addSize, 1));
+            PUT(FTRP(oldptr), PACK(addSize, 1));
+            return oldptr;
+        }
+        else
+        {
+            newptr = mm_malloc(newsize);
+            if (newptr == NULL)
+                return NULL;
+            memmove(newptr, oldptr, newsize);
+            mm_free(oldptr);
+            return newptr;
+        }
+    }
+}
+
+
 // first_fit 구현
 #if defined(FIRST_FIT)
 static void *find_fit(size_t asize)
@@ -248,6 +259,10 @@ static void *find_fit(size_t asize)
     
     return NULL;     // no fit
 }
+
+#elif defined(BEST_FIT)
+
+
 #endif
 
 static void place(void *bp, size_t asize)
