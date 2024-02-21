@@ -39,6 +39,7 @@ team_t team = {
 #define DSIZE 8                             // 더블 워드 크기 (바이트 단위)
 #define CHUNKSIZE (1<<12)                   // 2^12(4096 byte) 크기로 힙 확장
 
+<<<<<<< HEAD
 // 메모리 할당 정책 - 주석 해제하여 사용할 수 있음
 // #define FIRST_FIT
 #define NEXT_FIT
@@ -47,6 +48,12 @@ team_t team = {
 // explicit, implicit free list - 주석 해제하여 사용 가능
 // #define EXPLICIT
 #define IMPLICIT
+=======
+// 메모리 할당 정책
+#define FIRST_FIT
+// #define NEXT_FIT
+//#define BEST_FIT
+>>>>>>> 244d45518ce703cf8fd863df0aea80102ff2eee9
 
 // 힙에 사용될 매크로
 #define MAX(x, y) (x > y ? x : y)
@@ -217,8 +224,21 @@ void *mm_realloc(void *ptr, size_t size)                        // 블록 재할
         return oldptr;
     }
     else {
+<<<<<<< HEAD
         addSize = originsize + GET_SIZE(HDRP(NEXT_BLKP(oldptr)));           // 현재 블록의 크기 + 다음 가용 블록의 크기 - 확장된 크기
         if (!GET_ALLOC(HDRP(NEXT_BLKP(oldptr))) && (newsize <= addSize))    // 만약 다음 블록이 가용 상태이고, 재할당할 사이즈가 확장된 크기보다 작을 때
+=======
+        //realloc 최적화 중
+        addSize = originsize + GET_SIZE(FTRP(PREV_BLKP(oldptr)));  // 이전 블록의 크기 + 현재 bp가 보고 있는 블록의 크기
+        if (!GET_ALLOC(FTRP(PREV_BLKP(oldptr))) && (newsize <= addSize))
+        {
+            PUT(HDRP(PREV_BLKP(oldptr)), PACK(addSize, 1));
+            PUT(FTRP(PREV_BLKP(oldptr)), PACK(addSize, 1));
+            return PREV_BLKP(oldptr);
+        }
+        addSize = originsize + GET_SIZE(HDRP(NEXT_BLKP(oldptr)));
+        if (!GET_ALLOC(HDRP(NEXT_BLKP(oldptr))) && (newsize <= addSize))
+>>>>>>> 244d45518ce703cf8fd863df0aea80102ff2eee9
         {
             PUT(HDRP(oldptr), PACK(addSize, 1));                            // 기존 블록의 헤더에 확장된 크기만큼 할당
             PUT(FTRP(oldptr), PACK(addSize, 1));                            // 기존 블록의 푸터에 확장된 크기만큼 할당
