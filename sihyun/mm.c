@@ -45,12 +45,8 @@ team_t team = {
 // #define BEST_FIT
 
 // explicit, implicit free list - 주석 해제하여 사용 가능
-// #define EXPLICIT
-#define IMPLICIT
-// 메모리 할당 정책
-#define FIRST_FIT
-// #define NEXT_FIT
-//#define BEST_FIT
+#define EXPLICIT
+// #define IMPLICIT
 
 // 힙에 사용될 매크로
 #define MAX(x, y) (x > y ? x : y)
@@ -72,7 +68,8 @@ static void *extend_heap(size_t words);
 static void *coalesce(void *bp);
 static void *find_fit(size_t asize);
 static void place(void *bp, size_t asize);
-
+static void splice_free_block(void *bp);
+static void add_free_block(void *bp);
 
 static char *last_bp;               // next_fit을 위한 last_bp 포인터 선언
 static char *heap_listp;            // implicit free list에서의 mem_init() 이후의 초기 힙의 위치를 가리키는 포인터 선언
@@ -116,7 +113,6 @@ int mm_init(void)
 
     return 0;
 }
-
 #endif
 
 void *mm_malloc(size_t size)
@@ -165,6 +161,7 @@ static void *extend_heap(size_t words)       // 힙 확장
     return coalesce(bp);                     // 만약 이전 블록이 가용 블록이었으면 통합 수행
 }
 
+#if defined IMPLICIT
 static void *coalesce(void *bp)                                 // 블록 할당
 {
     size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(bp)));         // 이전 블록의 할당 여부(0, 1)
@@ -198,6 +195,72 @@ static void *coalesce(void *bp)                                 // 블록 할당
     last_bp = bp;
     return bp;
 }
+#elif defined EXPLICIT
+static void *coalesce(void *bp)
+{
+    size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(bp))); //이전 블록의 할당 상태 저장
+    size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp))); //다음 블록의 할당 상태 저장
+    size_t size = GET_SIZE(HDRP(bp));                   //현재 블록 사이즈
+
+    if (prev_alloc && next_alloc)                   /*Case 1 이전 다음 모두 할당*/
+    {
+        add_free_block(bp);                         //free_list에 추가
+        return bp;
+    }    
+
+    else if(prev_alloc && !next_alloc){             /*Case 2 이전 할당 & 다음 가용*/
+        splice_free_block(NEXT_BLKP(bp));           //가용 블록을 free_list에서 제거
+        size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
+        PUT(HDRP(bp), PACK(size, 0));
+        PUT(FTRP(bp), PACK(size,0));
+    }
+
+    else if(!prev_alloc && next_alloc){             /*Case 3 이전 가용 & 다음 할당*/
+        splice_free_block(PREV_BLKP(bp));
+        size += GET_SIZE(HDRP(PREV_BLKP(bp)));
+        PUT(HDRP(PREV_BLKP(bp)), PACK(size,0));
+        PUT(FTRP(bp), PACK(size, 0));
+        bp = PREV_BLKP(bp);
+    }
+    
+    else{                                           /*Case 4 이전 가용 & 다음 가용*/
+        splice_free_block(PREV_BLKP(bp));
+        splice_free_block(NEXT_BLKP(bp));
+        size += GET_SIZE(HDRP(PREV_BLKP(bp))) + GET_SIZE(FTRP(NEXT_BLKP(bp)));
+        PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
+        PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0));
+        bp = PREV_BLKP(bp);
+    }
+    
+    add_free_block(bp);                             //현재 병합한 가용 블록을 free_list에 추가
+    return bp;
+}
+#endif
+
+// splice_free_block : 가용 리스트에서 bp에 해당하는 블록을 제거하는 함수, LIFO 방식
+static void splice_free_block(void *bp)
+{
+    if (bp == free_listp)                                       // 제거하려는 블록이 free_list 맨 앞에 있는 블록이면 (이전 블록이 없음)
+    {
+        free_listp = GET_SUCC(free_listp);                      // 다음 블록을 리스트의 루트로 변경
+        return;
+    }
+                                                                
+    GET_SUCC(GET_PRED(bp)) = GET_SUCC(bp);                      // 이전 블록의 SUCC을 다음 가용 블록의 PRED와 연결
+                                            
+    if (GET_SUCC(bp) != NULL)                                   // 다음 가용 블록이 있을 경우만 다음 블록의 PRED를 이전 블록으로 변경
+        GET_PRED(GET_SUCC(bp)) = GET_PRED(bp);
+}
+
+
+// add_free_block : 가용 리스트의 맨 앞에 현재 블록을 추가하는 함수, 할당 블록이 해제되어 가용 상태가 되었을 때 호출
+static void add_free_block(void *bp)
+{
+    GET_SUCC(bp) = free_listp;    
+    if(free_listp != NULL)            
+        GET_PRED(free_listp) = bp;  // free_listp였던 블록의 PRED를 추가된 블록으로 연결 
+    free_listp = bp;                // 루트를 현재 블록으로 변경
+}
 
 void mm_free(void *bp)                                          // 블록 해제
 {
@@ -208,6 +271,7 @@ void mm_free(void *bp)                                          // 블록 해제
     coalesce(bp);                                               // 해제되었을 때 외부단편화 방지를 위해 블록 통합
 }
 
+#if defined IMPLICIT
 void *mm_realloc(void *ptr, size_t size)                        // 블록 재할당
 {
     void *oldptr = ptr;                                         // 재할당 과정 이전의 포인터를 저장해두기 위해 선언
@@ -250,10 +314,46 @@ void *mm_realloc(void *ptr, size_t size)                        // 블록 재할
         }
     }
 }
+#elif defined EXPLICIT
+void *mm_realloc(void *ptr, size_t size)
+{
+    void *oldptr = ptr;                         //이전 포인터
+    void *newptr;                               //새로 메모리 할당 포인터
 
+    size_t originsize = GET_SIZE(HDRP(oldptr)); // 원본 사이즈
+    size_t newsize = size + DSIZE;              // 새 사이즈 + (헤더와 푸터 고려)
+    
+    // newsize가 더 작은 경우
+    if (newsize <= originsize) {
+        return oldptr;                          //기존 메모리 블록 반환 (크기 줄일 필요 없음)
+    }
+    else {
+        // 연속된 블록이 비어있고, 새로운 메모리 블록의 크기가 연속된 블록의 크기보다 작거나 같으면
+        // 이전 메모리 블록의 사이즈를 새로운 크기로 설정해준다.
+        size_t addSize = originsize + GET_SIZE(HDRP(NEXT_BLKP(oldptr)));    
+        if (!GET_ALLOC(HDRP(NEXT_BLKP(oldptr))) && (newsize <= addSize)) 
+        {
+            splice_free_block(NEXT_BLKP(oldptr)); 
+            PUT(HDRP(oldptr), PACK(addSize, 1));
+            PUT(FTRP(oldptr), PACK(addSize, 1));
+            return oldptr;
+        }
+        else
+        {
+            newptr = mm_malloc(newsize);    //새로운 메모리 블록 할당
+            if (newptr == NULL)
+                return NULL;
+            memcpy(newptr, oldptr, newsize);    //이전 메모리 블록에서 새로운 메모리 블록으로 데이터를 복사
+            mm_free(oldptr);
+            return newptr;
+        }
+    }
+}
+#endif
 
 // first_fit 구현
-#if defined(FIRST_FIT)
+#if defined FIRST_FIT
+#elif defined IMPLICIT
 static void *find_fit(size_t asize)                             
 {
     void *bp;                                                   // 탐색을 수행할 bp 선언
@@ -266,8 +366,23 @@ static void *find_fit(size_t asize)
     return NULL;
 }
 
+#elif defined EXPLICIT
+static void *find_fit(size_t asize)
+{
+    void *bp = free_listp;
+
+    for(bp = free_listp; bp != NULL; bp = GET_SUCC(bp))
+    {
+        if(!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp))))   
+            return bp;
+    }
+    return NULL;
+}
+#endif
+
 // next-fit 구현
-#elif defined(NEXT_FIT)
+#if defined NEXT_FIT
+#elif defined IMPLICIT
 static void *find_fit(size_t asize)
 {
     char *bp;                                                                   // 탐색을 위한 bp를 선언
@@ -288,9 +403,11 @@ static void *find_fit(size_t asize)
     }
     return NULL;
 }
+#endif
 
 // best-fit 구현
-#elif defined(BEST_FIT)
+#if defined BEST_FIT
+#elif defined IMPLICIT
 static void *find_fit(size_t asize)
 {
     void *bp;                                                                           // 탐색을 위한 포인터 선언                                   
@@ -306,9 +423,9 @@ static void *find_fit(size_t asize)
     }
     return best_bp;
 }
-
 #endif
 
+#if defined IMPLICIT
 static void place(void *bp, size_t asize)                                               // 할당할만한 블록을 찾고 나면, 실제로 할당을 하는 하는 함수
 {
     size_t csize = GET_SIZE(HDRP(bp));                                                  // 현재 블록의 크기
@@ -330,3 +447,29 @@ static void place(void *bp, size_t asize)                                       
         last_bp = NEXT_BLKP(bp);
     }
 }
+
+#elif defined EXPLICIT
+// place : 할당 요청된 메모리 블록을 할당하고, 필요한 경우 블록을 분할한다.
+static void place(void *bp, size_t asize)
+{
+    splice_free_block(bp);                  //free_list에서 해당 블록 제거
+
+    size_t csize = GET_SIZE(HDRP(bp));      //현재 블록의 크기
+
+    if((csize - asize) >= (2*DSIZE))        //차이가 최소 블록 크기 16보다 같거나 크면 분할
+    {
+        PUT(HDRP(bp), PACK(asize,1));       //현재 블록에는 필요한 만큼만 할당
+        PUT(FTRP(bp), PACK(asize,1));
+
+        PUT(HDRP(NEXT_BLKP(bp)), PACK(csize - asize, 0));    //남은 크기를 다음 블록에 할당(가용 블록)
+        PUT(FTRP(NEXT_BLKP(bp)), PACK(csize - asize, 0));
+        add_free_block(NEXT_BLKP(bp));      //남은 블록을 free_list에 추가
+    }
+    else
+    {
+        PUT(HDRP(bp),PACK(csize,1));        //해당 블록 전부 사용
+        PUT(FTRP(bp),PACK(csize,1));    
+    }
+}
+
+#endif
