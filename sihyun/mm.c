@@ -75,7 +75,7 @@ static char *last_bp;               // next_fit을 위한 last_bp 포인터 선�
 static char *heap_listp;            // implicit free list에서의 mem_init() 이후의 초기 힙의 위치를 가리키는 포인터 선언
 static char *free_listp;            // explicit free list에서의 mem_init() 이후의 초기 힙의 위치를 가리키는 포인터 선언
 
-#if defined IMPLICIT         // 전처리 사용하여 implicit, explicit 사용 가능
+#if defined(IMPLICIT)                             // 전처리 사용하여 implicit, explicit 사용 가능
 int mm_init(void)
 {
     heap_listp = mem_sbrk(4*WSIZE);               // 힙을 위한 공간(16 byte)을 가상메모리에 만듦
@@ -93,7 +93,7 @@ int mm_init(void)
     return 0;
 }
 
-#elif defined EXPLICIT                                   // EXPLICIT FREE LIST 일 경우의 mm_init
+#elif defined(EXPLICIT)                                   // EXPLICIT FREE LIST 일 경우의 mm_init
 int mm_init(void)
 {
     if ((free_listp = mem_sbrk(8 *WSIZE))==(void*)-1)    // free_list 포인터는 가상메모리 최초 설정 후 힙의 첫 주소를 가리킴. 32Byte의 힙 설정
@@ -161,7 +161,7 @@ static void *extend_heap(size_t words)       // 힙 확장
     return coalesce(bp);                     // 만약 이전 블록이 가용 블록이었으면 통합 수행
 }
 
-#if defined IMPLICIT
+#if defined(IMPLICIT)
 static void *coalesce(void *bp)                                 // 블록 할당
 {
     size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(bp)));         // 이전 블록의 할당 여부(0, 1)
@@ -195,7 +195,7 @@ static void *coalesce(void *bp)                                 // 블록 할당
     last_bp = bp;
     return bp;
 }
-#elif defined EXPLICIT
+#elif defined(EXPLICIT)
 static void *coalesce(void *bp)
 {
     size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(bp))); //이전 블록의 할당 상태 저장
@@ -237,6 +237,7 @@ static void *coalesce(void *bp)
 }
 #endif
 
+#if defined(EXPLICIT)
 // splice_free_block : 가용 리스트에서 bp에 해당하는 블록을 제거하는 함수, LIFO 방식
 static void splice_free_block(void *bp)
 {
@@ -261,6 +262,7 @@ static void add_free_block(void *bp)
         GET_PRED(free_listp) = bp;  // free_listp였던 블록의 PRED를 추가된 블록으로 연결 
     free_listp = bp;                // 루트를 현재 블록으로 변경
 }
+#endif
 
 void mm_free(void *bp)                                          // 블록 해제
 {
@@ -271,7 +273,7 @@ void mm_free(void *bp)                                          // 블록 해제
     coalesce(bp);                                               // 해제되었을 때 외부단편화 방지를 위해 블록 통합
 }
 
-#if defined IMPLICIT
+#if defined(IMPLICIT)
 void *mm_realloc(void *ptr, size_t size)                        // 블록 재할당
 {
     void *oldptr = ptr;                                         // 재할당 과정 이전의 포인터를 저장해두기 위해 선언
@@ -285,17 +287,6 @@ void *mm_realloc(void *ptr, size_t size)                        // 블록 재할
         return oldptr;
     }
     else {
-        addSize = originsize + GET_SIZE(HDRP(NEXT_BLKP(oldptr)));           // 현재 블록의 크기 + 다음 가용 블록의 크기 - 확장된 크기
-        if (!GET_ALLOC(HDRP(NEXT_BLKP(oldptr))) && (newsize <= addSize))    // 만약 다음 블록이 가용 상태이고, 재할당할 사이즈가 확장된 크기보다 작을 때
-
-        //realloc 최적화 중
-        addSize = originsize + GET_SIZE(FTRP(PREV_BLKP(oldptr)));  // 이전 블록의 크기 + 현재 bp가 보고 있는 블록의 크기
-        if (!GET_ALLOC(FTRP(PREV_BLKP(oldptr))) && (newsize <= addSize))
-        {
-            PUT(HDRP(PREV_BLKP(oldptr)), PACK(addSize, 1));
-            PUT(FTRP(PREV_BLKP(oldptr)), PACK(addSize, 1));
-            return PREV_BLKP(oldptr);
-        }
         addSize = originsize + GET_SIZE(HDRP(NEXT_BLKP(oldptr)));
         if (!GET_ALLOC(HDRP(NEXT_BLKP(oldptr))) && (newsize <= addSize))
         {
@@ -314,7 +305,7 @@ void *mm_realloc(void *ptr, size_t size)                        // 블록 재할
         }
     }
 }
-#elif defined EXPLICIT
+#elif defined(EXPLICIT)
 void *mm_realloc(void *ptr, size_t size)
 {
     void *oldptr = ptr;                         //이전 포인터
@@ -352,8 +343,7 @@ void *mm_realloc(void *ptr, size_t size)
 #endif
 
 // first_fit 구현
-#if defined FIRST_FIT
-#elif defined IMPLICIT
+#if defined(IMPLICIT) && defined(FIRST_FIT)
 static void *find_fit(size_t asize)                             
 {
     void *bp;                                                   // 탐색을 수행할 bp 선언
@@ -366,7 +356,7 @@ static void *find_fit(size_t asize)
     return NULL;
 }
 
-#elif defined EXPLICIT
+#elif defined(EXPLICIT) && defined(FIRST_FIT)
 static void *find_fit(size_t asize)
 {
     void *bp = free_listp;
@@ -381,8 +371,7 @@ static void *find_fit(size_t asize)
 #endif
 
 // next-fit 구현
-#if defined NEXT_FIT
-#elif defined IMPLICIT
+#if defined(IMPLICIT) && defined(NEXT_FIT)
 static void *find_fit(size_t asize)
 {
     char *bp;                                                                   // 탐색을 위한 bp를 선언
@@ -406,8 +395,7 @@ static void *find_fit(size_t asize)
 #endif
 
 // best-fit 구현
-#if defined BEST_FIT
-#elif defined IMPLICIT
+#if defined(BEST_FIT)
 static void *find_fit(size_t asize)
 {
     void *bp;                                                                           // 탐색을 위한 포인터 선언                                   
@@ -425,7 +413,7 @@ static void *find_fit(size_t asize)
 }
 #endif
 
-#if defined IMPLICIT
+#if defined(IMPLICIT)
 static void place(void *bp, size_t asize)                                               // 할당할만한 블록을 찾고 나면, 실제로 할당을 하는 하는 함수
 {
     size_t csize = GET_SIZE(HDRP(bp));                                                  // 현재 블록의 크기
@@ -448,7 +436,7 @@ static void place(void *bp, size_t asize)                                       
     }
 }
 
-#elif defined EXPLICIT
+#elif defined(EXPLICIT)
 // place : 할당 요청된 메모리 블록을 할당하고, 필요한 경우 블록을 분할한다.
 static void place(void *bp, size_t asize)
 {
@@ -471,5 +459,27 @@ static void place(void *bp, size_t asize)
         PUT(FTRP(bp),PACK(csize,1));    
     }
 }
-
 #endif
+
+// 기존 mm_realloc - 무조건 새로운 메모리를 할당한 뒤, 데이터를 복사하는 방식 -> 반복적인 메모리 할당으로 코드의 효율성이 떨어짐
+// void *mm_realloc(void *ptr, size_t size)
+// {
+//     void *oldptr = ptr;     // 주어진 포인터를 oldptr에 복사.
+//     void *newptr;           // 새로운 메모리 블록을 가리킬 포인터
+//     size_t copySize;        // 데이터를 복사할 크기
+
+//     /* 새 블록에 할당*/
+//     newptr = mm_malloc(size);
+//     if (newptr == NULL)
+//         return NULL;
+
+//     /* 데이터 복사 */
+//     copySize =GET_SIZE(HDRP(oldptr));   
+//     if (size < copySize)            
+//         copySize = size;             
+
+//     memcpy(newptr, oldptr, copySize);   //새 블록으로 데이터 복사 (복사될 대상 메모리 시작 주소, 복사할 원본 메모리 영역 시작 주소, 복사할 사이즈)
+//     mm_free(oldptr);            //이전 메모리 블록 해제
+
+//     return newptr;  //새로운 메모리 블록 포인터 반환
+// }
